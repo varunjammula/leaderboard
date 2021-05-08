@@ -108,9 +108,11 @@ class LeaderboardEvaluator(object):
         module_name = os.path.basename(args.agent).split('.')[0]
         sys.path.insert(0, os.path.dirname(args.agent))
         self.module_agent = importlib.import_module(module_name)
+        # print(f'module_agent: {self.module_agent}')
+
 
         # Create the ScenarioManager
-        self.manager = ScenarioManager(args.timeout, args.debug > 1)
+        self.manager = ScenarioManager(timeout=args.timeout, debug_mode=False, sync_mode=True)
 
         # Time control for summary purposes
         self._start_time = GameTime.get_time()
@@ -127,7 +129,9 @@ class LeaderboardEvaluator(object):
         if self._agent_watchdog and not self._agent_watchdog.get_status():
             raise RuntimeError("Timeout: Agent took longer than {}s to setup".format(self.client_timeout))
         elif self.manager:
-            self.manager.signal_handler(signum, frame)
+            self.manager._running = False
+            # sys.exit(0)
+            # self.manager.signal_handler(signum, frame)
 
     def __del__(self):
         """

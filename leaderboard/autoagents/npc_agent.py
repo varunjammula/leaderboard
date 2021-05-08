@@ -13,7 +13,8 @@ import carla
 from agents.navigation.basic_agent import BasicAgent
 from srunner.scenariomanager.carla_data_provider import CarlaDataProvider
 
-from leaderboard.autoagents.autonomous_agent import AutonomousAgent, Track
+from leaderboard.autoagents.autonomous_agent import AutonomousAgent, Track, AutonomousInterface
+
 
 def get_entry_point():
     return 'NpcAgent'
@@ -35,6 +36,7 @@ class NpcAgent(AutonomousAgent):
 
         self._route_assigned = False
         self._agent = None
+        self._hic = AutonomousInterface('NPC Agent')
 
     def sensors(self):
         """
@@ -54,9 +56,15 @@ class NpcAgent(AutonomousAgent):
         ]
         """
 
+        # sensors = [
+        #     {'type': 'sensor.camera.rgb', 'x': 0.7, 'y': -0.4, 'z': 1.60, 'roll': 0.0, 'pitch': 0.0, 'yaw': 0.0,
+        #      'width': 300, 'height': 200, 'fov': 100, 'id': 'Left'},
+        # ]
+
         sensors = [
-            {'type': 'sensor.camera.rgb', 'x': 0.7, 'y': -0.4, 'z': 1.60, 'roll': 0.0, 'pitch': 0.0, 'yaw': 0.0,
-             'width': 300, 'height': 200, 'fov': 100, 'id': 'Left'},
+            {'type': 'sensor.camera.rgb', 'x': 0.7, 'y': 0.0, 'z': 1.60, 'roll': 0.0, 'pitch': 0.0, 'yaw': 0.0,
+             'width': 800, 'height': 600, 'fov': 100, 'id': 'Center'},
+            # {'type': 'sensor.speedometer', 'reading_frequency': 20, 'id': 'speed'},
         ]
 
         return sensors
@@ -65,6 +73,10 @@ class NpcAgent(AutonomousAgent):
         """
         Execute one step of navigation.
         """
+
+        self.agent_engaged = True
+        self._hic.run_interface(input_data)
+
         control = carla.VehicleControl()
         control.steer = 0.0
         control.throttle = 0.0

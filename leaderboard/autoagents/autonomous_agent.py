@@ -11,12 +11,16 @@ from __future__ import print_function
 
 from enum import Enum
 
-import carla
+import carla, pygame
 from srunner.scenariomanager.timer import GameTime
 
 from leaderboard.utils.route_manipulation import downsample_route
 # from leaderboard.envs.sensor_interface import SensorInterface
 from srunner.autoagents.sensor_interface import SensorInterface
+
+def get_entry_point():
+    return 'AutonomousAgent'
+
 
 class Track(Enum):
 
@@ -25,6 +29,41 @@ class Track(Enum):
     """
     SENSORS = 'SENSORS'
     MAP = 'MAP'
+
+class AutonomousInterface(object):
+
+    """
+    Class to control a vehicle manually for debugging purposes
+    """
+
+    def __init__(self, agent_type='Autonomous Agent'):
+        self._width = 800
+        self._height = 600
+        self._surface = None
+
+        pygame.init()
+        pygame.font.init()
+        self._clock = pygame.time.Clock()
+        self._display = pygame.display.set_mode((self._width, self._height), pygame.HWSURFACE | pygame.DOUBLEBUF)
+        pygame.display.set_caption(agent_type)
+
+    def run_interface(self, input_data):
+        """
+        Run the GUI
+        """
+        # process sensor data
+        image_center = input_data['Center'][1][:, :, -2::-1]
+
+        # display image
+        self._surface = pygame.surfarray.make_surface(image_center.swapaxes(0, 1))
+        if self._surface is not None:
+            self._display.blit(self._surface, (0, 0))
+        pygame.display.flip()
+
+    def _quit(self):
+        pygame.quit()
+
+
 
 class AutonomousAgent(object):
 
@@ -52,6 +91,11 @@ class AutonomousAgent(object):
             Track.SENSORS : CAMERAS, LIDAR, RADAR, GPS and IMU sensors are allowed
             Track.MAP : OpenDRIVE map is also allowed
         """
+        self.track = Track.SENSORS
+
+        self.agent_engaged = False
+        self._hic = AutonomousInterface()
+
         pass
 
     def sensors(self):  # pylint: disable=no-self-use
@@ -72,7 +116,11 @@ class AutonomousAgent(object):
         ]
 
         """
-        sensors = []
+        sensors = [
+            {'type': 'sensor.camera.rgb', 'x': 0.7, 'y': 0.0, 'z': 1.60, 'roll': 0.0, 'pitch': 0.0, 'yaw': 0.0,
+             'width': 800, 'height': 600, 'fov': 100, 'id': 'Center'},
+            # {'type': 'sensor.speedometer', 'reading_frequency': 20, 'id': 'speed'},
+        ]
 
         return sensors
 
@@ -81,6 +129,10 @@ class AutonomousAgent(object):
         Execute one step of navigation.
         :return: control
         """
+
+        self.agent_engaged = True
+        self._hic.run_interface(input_data)
+
         control = carla.VehicleControl()
         control.steer = 0.0
         control.throttle = 0.0
@@ -94,6 +146,7 @@ class AutonomousAgent(object):
         Destroy (clean-up) the agent
         :return:
         """
+        self._hic._quit = True
         pass
 
     def __call__(self):
