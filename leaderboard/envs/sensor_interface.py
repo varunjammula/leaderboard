@@ -195,46 +195,46 @@ class CallBack(object):
         self._data_provider.update_sensor(tag, package.data, package.frame)
 
 
-class SensorInterface(object):
-    def __init__(self):
-        self._sensors_objects = {}
-        self._data_buffers = {}
-        self._new_data_buffers = Queue()
-        self._queue_timeout = 10
-
-        # Only sensor that doesn't get the data on tick, needs special treatment
-        self._opendrive_tag = None
-
-
-    def register_sensor(self, tag, sensor_type, sensor):
-        if tag in self._sensors_objects:
-            raise SensorConfigurationInvalid("Duplicated sensor tag [{}]".format(tag))
-
-        self._sensors_objects[tag] = sensor
-
-        if sensor_type == 'sensor.opendrive_map': 
-            self._opendrive_tag = tag
-
-    def update_sensor(self, tag, data, timestamp):
-        if tag not in self._sensors_objects:
-            raise SensorConfigurationInvalid("The sensor with tag [{}] has not been created!".format(tag))
-
-        self._new_data_buffers.put((tag, timestamp, data))
-
-    def get_data(self):
-        try: 
-            data_dict = {}
-            while len(data_dict.keys()) < len(self._sensors_objects.keys()):
-
-                # Don't wait for the opendrive sensor
-                if self._opendrive_tag and self._opendrive_tag not in data_dict.keys() \
-                        and len(self._sensors_objects.keys()) == len(data_dict.keys()) + 1:
-                    break
-
-                sensor_data = self._new_data_buffers.get(True, self._queue_timeout)
-                data_dict[sensor_data[0]] = ((sensor_data[1], sensor_data[2]))
-
-        except Empty:
-            raise SensorReceivedNoData("A sensor took too long to send their data")
-
-        return data_dict
+# class SensorInterface(object):
+#     def __init__(self):
+#         self._sensors_objects = {}
+#         self._data_buffers = {}
+#         self._new_data_buffers = Queue()
+#         self._queue_timeout = 10
+#
+#         # Only sensor that doesn't get the data on tick, needs special treatment
+#         self._opendrive_tag = None
+#
+#
+#     def register_sensor(self, tag, sensor_type, sensor):
+#         if tag in self._sensors_objects:
+#             raise SensorConfigurationInvalid("Duplicated sensor tag [{}]".format(tag))
+#
+#         self._sensors_objects[tag] = sensor
+#
+#         if sensor_type == 'sensor.opendrive_map':
+#             self._opendrive_tag = tag
+#
+#     def update_sensor(self, tag, data, timestamp):
+#         if tag not in self._sensors_objects:
+#             raise SensorConfigurationInvalid("The sensor with tag [{}] has not been created!".format(tag))
+#
+#         self._new_data_buffers.put((tag, timestamp, data))
+#
+#     def get_data(self):
+#         try:
+#             data_dict = {}
+#             while len(data_dict.keys()) < len(self._sensors_objects.keys()):
+#
+#                 # Don't wait for the opendrive sensor
+#                 if self._opendrive_tag and self._opendrive_tag not in data_dict.keys() \
+#                         and len(self._sensors_objects.keys()) == len(data_dict.keys()) + 1:
+#                     break
+#
+#                 sensor_data = self._new_data_buffers.get(True, self._queue_timeout)
+#                 data_dict[sensor_data[0]] = ((sensor_data[1], sensor_data[2]))
+#
+#         except Empty:
+#             raise SensorReceivedNoData("A sensor took too long to send their data")
+#
+#         return data_dict

@@ -15,8 +15,8 @@ import carla
 from srunner.scenariomanager.timer import GameTime
 
 from leaderboard.utils.route_manipulation import downsample_route
-from leaderboard.envs.sensor_interface import SensorInterface
-
+# from leaderboard.envs.sensor_interface import SensorInterface
+from srunner.autoagents.sensor_interface import SensorInterface
 
 class Track(Enum):
 

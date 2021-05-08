@@ -27,11 +27,14 @@ import signal
 from srunner.scenariomanager.carla_data_provider import *
 from srunner.scenariomanager.timer import GameTime
 from srunner.scenariomanager.watchdog import Watchdog
+from srunner.scenariomanager.scenario_manager import ScenarioManager
+# from srunner.autoagents.agent_wrapper import AgentWrapper
 
-from leaderboard.scenarios.scenario_manager import ScenarioManager
+# from leaderboard.scenarios.scenario_manager import ScenarioManager
 from leaderboard.scenarios.route_scenario import RouteScenario
-from leaderboard.envs.sensor_interface import SensorConfigurationInvalid
-from leaderboard.autoagents.agent_wrapper import  AgentWrapper, AgentError
+# from leaderboard.envs.sensor_interface import SensorConfigurationInvalid
+# from leaderboard.autoagents.agent_wrapper import AgentWrapper
+# from leaderboard.autoagents.agent_wrapper import AgentError
 from leaderboard.utils.statistics_manager import StatisticsManager
 from leaderboard.utils.route_indexer import RouteIndexer
 
@@ -46,6 +49,22 @@ sensors_to_icons = {
     'sensor.speedometer':       'carla_speedometer'
 }
 
+
+class SensorConfigurationInvalid(Exception):
+    """
+    Exceptions thrown when the sensors used by the agent are not allowed for that specific submissions
+    """
+
+    def __init__(self, message):
+        super(SensorConfigurationInvalid, self).__init__(message)
+
+class AgentError(Exception):
+    """
+    Exceptions thrown when the agent returns an error during the simulation
+    """
+
+    def __init__(self, message):
+        super(AgentError, self).__init__(message)
 
 class LeaderboardEvaluator(object):
 
@@ -261,14 +280,17 @@ class LeaderboardEvaluator(object):
             self._agent_watchdog.start()
             agent_class_name = getattr(self.module_agent, 'get_entry_point')()
             self.agent_instance = getattr(self.module_agent, agent_class_name)(args.agent_config)
+            print(self.agent_instance)
             config.agent = self.agent_instance
 
             # Check and store the sensors
             if not self.sensors:
                 self.sensors = self.agent_instance.sensors()
-                track = self.agent_instance.track
+                # track = self.agent_instance.track
+                # print(self.sensors)
+                # sys.exit(0)
 
-                AgentWrapper.validate_sensor_configuration(self.sensors, track, args.track)
+                # AgentWrapper.validate_sensor_configuration(self.sensors, track, args.track)
 
                 self.sensor_icons = [sensors_to_icons[sensor['type']] for sensor in self.sensors]
                 self.statistics_manager.save_sensors(self.sensor_icons, args.checkpoint)
@@ -317,7 +339,7 @@ class LeaderboardEvaluator(object):
             # Load scenario and run it
             if args.record:
                 self.client.start_recorder("{}/{}_rep{}.log".format(args.record, config.name, config.repetition_index))
-            self.manager.load_scenario(scenario, self.agent_instance, config.repetition_index)
+            self.manager.load_scenario(scenario, self.agent_instance) #, config.repetition_index)
 
         except Exception as e:
             # The scenario is wrong -> set the ejecution to crashed and stop
