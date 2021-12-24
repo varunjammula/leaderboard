@@ -43,7 +43,14 @@ sensors_to_icons = {
     'sensor.other.gnss':        'carla_gnss',
     'sensor.other.imu':         'carla_imu',
     'sensor.opendrive_map':     'carla_opendrive_map',
-    'sensor.speedometer':       'carla_speedometer'
+    'sensor.speedometer':       'carla_speedometer',
+    # Training sensors
+    'sensor.map': 'carla_map',
+    'sensor.pretty_map': 'carla_map',
+    'sensor.collision': 'carla_collision',
+    'sensor.stitch_camera.rgb': 'carla_stich_rgb',
+    'sensor.stitch_camera.semantic_segmentation': 'carla_stich_sem',
+    'sensor.camera.semantic_segmentation': 'carla_sem'
 }
 
 

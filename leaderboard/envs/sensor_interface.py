@@ -1,5 +1,8 @@
 import copy
 import logging
+import math
+import weakref
+
 import numpy as np
 import os
 import time
@@ -11,7 +14,7 @@ from queue import Empty
 import carla
 from srunner.scenariomanager.carla_data_provider import CarlaDataProvider
 from srunner.scenariomanager.timer import GameTime
-
+from .map_utils import Wrapper as map_utils
 
 def threaded(fn):
     def wrapper(*args, **kwargs):
@@ -45,6 +48,155 @@ class GenericMeasurement(object):
     def __init__(self, data, frame):
         self.data = data
         self.frame = frame
+
+
+class StitchCameraReader:
+    def __init__(self, bp_library, vehicle, sensor_spec, reading_frequency=1.0):
+
+        fov = int(sensor_spec['fov'])
+        # Hack
+        self.yaws = [('left', -fov + 5), ('center', 0), ('right', fov - 5)]
+        self.sensor_type = 'sensor.camera.' + str(sensor_spec['type'].split('.')[-1])
+
+        bp = bp_library.find(self.sensor_type)
+
+        bp.set_attribute('image_size_x', str(sensor_spec['width']))
+        bp.set_attribute('image_size_y', str(sensor_spec['height']))
+        bp.set_attribute('fov', str(sensor_spec['fov']))
+        bp.set_attribute('lens_circle_multiplier', str(3.0))
+        bp.set_attribute('lens_circle_falloff', str(3.0))
+        if 'rgb' in sensor_spec['type']:
+            bp.set_attribute('chromatic_aberration_intensity', str(0.5))
+            bp.set_attribute('chromatic_aberration_offset', str(0))
+
+        self.sensors = []
+        self.datas = {}
+
+        sensor_location = carla.Location(x=sensor_spec['x'], y=sensor_spec['y'], z=sensor_spec['z'])
+        for prefix, yaw in self.yaws:
+            sensor_rotation = carla.Rotation(
+                pitch=sensor_spec['pitch'],
+                roll=sensor_spec['roll'],
+                yaw=sensor_spec['yaw'] + yaw
+            )
+
+            sensor = CarlaDataProvider.get_world().spawn_actor(bp, carla.Transform(sensor_location, sensor_rotation),
+                                                               vehicle)
+            sensor.listen(self.__class__.on_camera_func(weakref.ref(self), prefix))
+            self.sensors.append(sensor)
+
+        self._reading_frequency = reading_frequency
+        self._callback = None
+        self._run_ps = True
+        self.run()
+
+    @staticmethod
+    def on_camera_func(weakself, prefix):
+        def on_camera(event):
+            self = weakself()
+            array = np.frombuffer(event.raw_data, dtype=np.dtype("uint8"))
+            array = copy.deepcopy(array)
+            array = np.reshape(array, (event.height, event.width, 4))
+
+            self.datas[prefix] = array[..., 2] if 'semantic' in self.sensor_type else array[..., :3]
+
+        return on_camera
+
+    def ready(self):
+        for prefix, _ in self.yaws:
+            if prefix not in self.datas:
+                return False
+
+        return True
+
+    @property
+    def stitched(self):
+        images = []
+        for prefix, _ in self.yaws:
+            images.append(self.datas[prefix])
+
+        return np.concatenate(images, axis=1)
+
+    @threaded
+    def run(self):
+        first_time = True
+        latest_time = GameTime.get_time()
+        while self._run_ps:
+            if self._callback is not None:
+
+                if not self.ready():
+                    continue
+
+                current_time = GameTime.get_time()
+
+                # Second part forces the sensors to send data at the first tick, regardless of frequency
+                if current_time - latest_time > (1 / self._reading_frequency) \
+                        or (first_time and GameTime.get_frame() != 0):
+                    self._callback(GenericMeasurement(self.stitched, GameTime.get_frame()))
+                    latest_time = GameTime.get_time()
+                    first_time = False
+                else:
+                    time.sleep(0.001)
+
+    def listen(self, callback):
+        # Tell that this function receives what the producer does.
+        self._callback = callback
+
+    def stop(self):
+        self._run_ps = False
+
+    def destroy(self):
+        self._run_ps = False
+        for sensor in self.sensors:
+            sensor.destroy()
+
+        self.datas.clear()
+
+
+class CollisionReader:
+    def __init__(self, bp_library, vehicle, reading_frequency=1.0):
+        self._collided = False
+        bp = bp_library.find('sensor.other.collision')
+        self.sensor = CarlaDataProvider.get_world().spawn_actor(bp, carla.Transform(), vehicle)
+        self.sensor.listen(lambda event: self.__class__.on_collision(weakref.ref(self), event))
+
+        self._reading_frequency = reading_frequency
+        self._callback = None
+        self._run_ps = True
+        self.run()
+
+    @threaded
+    def run(self):
+        first_time = True
+        latest_time = GameTime.get_time()
+        while self._run_ps:
+            if self._callback is not None:
+                current_time = GameTime.get_time()
+
+                # Second part forces the sensors to send data at the first tick, regardless of frequency
+                if current_time - latest_time > (1 / self._reading_frequency) \
+                        or (first_time and GameTime.get_frame() != 0):
+                    self._callback(GenericMeasurement(self._collided, GameTime.get_frame()))
+                    latest_time = GameTime.get_time()
+                    first_time = False
+                else:
+                    time.sleep(0.001)
+
+    def listen(self, callback):
+        # Tell that this function receives what the producer does.
+        self._callback = callback
+
+    def stop(self):
+        self._run_ps = False
+
+    def destroy(self):
+        self._run_ps = False
+        self.sensor.destroy()
+
+    @staticmethod
+    def on_collision(weakself, data):
+        self = weakself()
+        self._collided = True
 
 
 class BaseReader(object):
@@ -86,6 +238,24 @@ class BaseReader(object):
     def destroy(self):
         self._run_ps = False
 
+
+class MapReader(BaseReader):
+    def __init__(self, vehicle, reading_frequency=1.0):
+        super().__init__(vehicle, reading_frequency)
+
+        client = CarlaDataProvider.get_client()
+        world = CarlaDataProvider.get_world()
+        town_map = CarlaDataProvider.get_map()
+
+        # Initialize map
+        map_utils.init(client, world, town_map, vehicle)
+
+    def __call__(self):
+        map_utils.tick()
+        map_obs = map_utils.get_observations()
+        labels = get_birdview(map_obs)
+
+        return labels
 
 class SpeedometerReader(BaseReader):
     """
@@ -238,3 +408,43 @@ class SensorInterface(object):
             raise SensorReceivedNoData("A sensor took too long to send their data")
 
         return data_dict
+
+def get_birdview(observations):
+    birdview = [
+            observations['road'],
+            observations['lane'],
+            observations['stop'],
+            observations['traffic'],
+            observations['vehicle'],
+            observations['pedestrian'],
+            observations['waypoints'][0],
+            observations['waypoints'][1],
+            observations['waypoints'][2],
+            observations['waypoints'][3],
+            observations['waypoints'][4],
+            observations['waypoints'][5],
+            ]
+
+    birdview = [x if x.ndim == 3 else x[...,None] for x in birdview]
+    birdview = np.concatenate(birdview, 2)
+
+    return birdview
+
+def is_within_distance_ahead(target_transform, current_transform, max_distance):
+
+    target_vector = np.array([target_transform.location.x - current_transform.location.x, target_transform.location.y - current_transform.location.y])
+    norm_target = np.linalg.norm(target_vector)
+
+    # If the vector is too short, we can simply stop here
+    if norm_target < 0.001:
+        return True
+
+    if norm_target > max_distance:
+        return False
+
+    fwd = current_transform.get_forward_vector()
+    forward_vector = np.array([fwd.x, fwd.y])
+    d_angle = math.degrees(math.acos(np.clip(np.dot(forward_vector, target_vector) / norm_target, -1., 1.)))
+
+    return d_angle < 90.0
+

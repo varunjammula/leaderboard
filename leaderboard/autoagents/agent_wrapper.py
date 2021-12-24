@@ -17,7 +17,8 @@ import time
 import carla
 from srunner.scenariomanager.carla_data_provider import CarlaDataProvider
 
-from leaderboard.envs.sensor_interface import CallBack, OpenDriveMapReader, SpeedometerReader, SensorConfigurationInvalid
+from leaderboard.envs.sensor_interface import CallBack, OpenDriveMapReader, SpeedometerReader, \
+    SensorConfigurationInvalid, MapReader, StitchCameraReader, CollisionReader
 from leaderboard.autoagents.autonomous_agent import Track
 
 MAX_ALLOWED_RADIUS_SENSOR = 3.0
@@ -56,7 +57,12 @@ class AgentWrapper(object):
         'sensor.lidar.ray_cast',
         'sensor.other.radar',
         'sensor.other.gnss',
-        'sensor.other.imu'
+        'sensor.other.imu',
+        'sensor.collision',  # This is for training
+        'sensor.map',  # This is for training
+        'sensor.stitch_camera.rgb',  # This is for training
+        'sensor.stitch_camera.semantic_segmentation',  # This is for training
+        'sensor.camera.semantic_segmentation',  # This is for training
     ]
 
     _agent = None
@@ -86,10 +92,22 @@ class AgentWrapper(object):
             if sensor_spec['type'].startswith('sensor.opendrive_map'):
                 # The HDMap pseudo sensor is created directly here
                 sensor = OpenDriveMapReader(vehicle, sensor_spec['reading_frequency'])
+            elif sensor_spec['type'].startswith('sensor.map'):
+                delta_time = CarlaDataProvider.get_world().get_settings().fixed_delta_seconds
+                frame_rate = 1 / delta_time
+                sensor = MapReader(vehicle, frame_rate)
             elif sensor_spec['type'].startswith('sensor.speedometer'):
                 delta_time = CarlaDataProvider.get_world().get_settings().fixed_delta_seconds
                 frame_rate = 1 / delta_time
                 sensor = SpeedometerReader(vehicle, frame_rate)
+            elif sensor_spec['type'].startswith('sensor.stitch_camera'):
+                delta_time = CarlaDataProvider.get_world().get_settings().fixed_delta_seconds
+                frame_rate = 1 / delta_time
+                sensor = StitchCameraReader(bp_library, vehicle, sensor_spec, frame_rate)
+            elif sensor_spec['type'].startswith('sensor.collision'):
+                delta_time = CarlaDataProvider.get_world().get_settings().fixed_delta_seconds
+                frame_rate = 1 / delta_time
+                sensor = CollisionReader(bp_library, vehicle, frame_rate)
             # These are the sensors spawned on the carla world
             else:
                 bp = bp_library.find(str(sensor_spec['type']))
